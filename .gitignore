@@ -1,0 +1,4 @@
+# Only the app goes online. Documents and test files stay on this PC.
+*
+!index.html
+!.gitignore
