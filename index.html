@@ -28,7 +28,7 @@
     --pivot: #ff5a4f;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; overflow: hidden; }
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
   body {
     background: var(--bg); color: var(--ink);
     font: 14px/1.45 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
@@ -72,6 +72,7 @@
 
   /* The menu. Sits at the bottom so the word stays visible above it. */
   #menu {
+    touch-action: none;
     position: fixed; left: 50%; bottom: 0; transform: translateX(-50%);
     width: min(380px, 100vw);
     padding: 18px 22px calc(16px + env(safe-area-inset-bottom));
@@ -589,28 +590,39 @@ const fileInput = document.getElementById('file');
 fileInput.addEventListener('change', () => { openFile(fileInput.files[0]); fileInput.value = ''; });
 
 // Computer: left click plays or pauses, right click opens the menu.
-// Phone: one tap plays or pauses, a double tap opens the menu.
-let lastTap = 0, tapTimer = null;
+// Phone: a tap plays or pauses, swipe up opens the menu, swipe down closes it.
+function primary() { if (!doc) fileInput.click(); else toggle(); }
+
 stage.addEventListener('pointerup', e => {
-  if (e.button !== 0) return;
-  if (menuOpen()) { closeMenu(); return; }
-  // With nothing open, a tap opens the file picker right away (iPhones block it if delayed).
-  if (e.pointerType === 'mouse' || !doc) { primary(); return; }
-  const now = Date.now();
-  if (now - lastTap < 300) {
-    clearTimeout(tapTimer); lastTap = 0;
-    openMenu();
-  } else {
-    lastTap = now;
-    tapTimer = setTimeout(primary, 300);
+  if (e.pointerType !== 'mouse' || e.button !== 0) return;
+  if (menuOpen()) closeMenu(); else primary();
+});
+
+let touchStart = null;
+document.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse') return;
+  // A drag on a slider moves the slider, never the menu.
+  touchStart = e.target.closest('input[type=range]') ? null : { x: e.clientX, y: e.clientY, onStage: !!e.target.closest('#stage') };
+});
+document.addEventListener('pointerup', e => {
+  if (e.pointerType === 'mouse' || !touchStart) return;
+  const dx = e.clientX - touchStart.x, dy = e.clientY - touchStart.y, s = touchStart;
+  touchStart = null;
+  if (Math.abs(dy) >= 40 && Math.abs(dy) > Math.abs(dx)) {
+    if (dy < 0 && !menuOpen()) openMenu();
+    else if (dy > 0 && menuOpen()) closeMenu();
+    return;
+  }
+  if (s.onStage && Math.abs(dx) < 12 && Math.abs(dy) < 12) {
+    if (menuOpen()) closeMenu(); else primary();
   }
 });
-function primary() { if (!doc) fileInput.click(); else toggle(); }
+document.addEventListener('pointercancel', () => { touchStart = null; });
 
 document.addEventListener('contextmenu', e => {
   e.preventDefault();
   if (e.target.closest('#menu')) return;
-  // Phones fire contextmenu on a long press; leave that alone so it doesn't fight the double tap.
+  // Phones fire contextmenu on a long press; ignore it so it never opens the menu by accident.
   if (e.pointerType === 'touch' || (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents)) return;
   menuOpen() ? closeMenu() : openMenu();
 });
