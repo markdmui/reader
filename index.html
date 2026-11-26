@@ -102,13 +102,13 @@
   }
   input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--quiet); border: 0; }
   /* The dial is grey at rest and turns black while it's being moved. */
-  /* Each slider has its own colour (speed green, size red, position blue), so the edge of vision can
+  /* Each slider has its own colour (speed blue, size red, position green), so the edge of vision can
      tell which one is under the finger or mouse without looking (Mark 11-26). */
   /* Set on the header row too, so the header takes the same colour while its slider moves. */
-  #wpm, .row:has(+ #wpm) { --dial: #0fb300; } #size, .row:has(+ #size) { --dial: #cc0a16; } #pos, .row:has(+ #pos) { --dial: #0070e6; }
-  :root.dark #wpm, :root.dark .row:has(+ #wpm) { --dial: #2ad417; }
+  #wpm, .row:has(+ #wpm) { --dial: #0070e6; } #size, .row:has(+ #size) { --dial: #cc0a16; } #pos, .row:has(+ #pos) { --dial: #0fb300; }
+  :root.dark #wpm, :root.dark .row:has(+ #wpm) { --dial: #2a8ef7; }
   :root.dark #size, :root.dark .row:has(+ #size) { --dial: #f2333e; }
-  :root.dark #pos, :root.dark .row:has(+ #pos) { --dial: #2a8ef7; }
+  :root.dark #pos, :root.dark .row:has(+ #pos) { --dial: #2ad417; }
   .row:has(+ input.moving) h3 { color: var(--dial); }
   input[type=range].moving::-webkit-slider-thumb { background: var(--dial); }
   input[type=range].moving::-moz-range-thumb { background: var(--dial); }
