@@ -85,7 +85,8 @@
   #menu.open { display: block; }
   .row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 16px; }
   .row:first-child { margin-top: 0; }
-  .row h3 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
+  /* The header and the number beside it (150 WPM, 52 PX) look the same: size, weight, capitals, colour. */
+  .row h3, .row > span:not(.info) { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--muted); text-transform: uppercase; }
   .row b { font-weight: 600; font-variant-numeric: tabular-nums; }
   .row .info { color: var(--muted); font-variant-numeric: tabular-nums; }
 
@@ -109,7 +110,7 @@
   :root.dark #wpm, :root.dark .row:has(+ #wpm) { --dial: #2a8ef7; }
   :root.dark #size, :root.dark .row:has(+ #size) { --dial: #f2333e; }
   :root.dark #pos, :root.dark .row:has(+ #pos) { --dial: #2ad417; }
-  .row:has(+ input.moving) h3 { color: var(--dial); }
+  .row:has(+ input.moving) h3, .row:has(+ input.moving) > span:not(.info) { color: var(--dial); }
   input[type=range].moving::-webkit-slider-thumb { background: var(--dial); }
   input[type=range].moving::-moz-range-thumb { background: var(--dial); }
   /* With a mouse it also takes its colour on hover, before the wheel moves it.
