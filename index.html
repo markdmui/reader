@@ -98,9 +98,12 @@
   input[type=range]::-moz-range-track { height: 2px; background: var(--line); }
   input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none; width: 14px; height: 14px; margin-top: -6px;
-    border-radius: 50%; background: var(--ink); border: 0;
+    border-radius: 50%; background: var(--quiet); border: 0;
   }
-  input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--ink); border: 0; }
+  input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--quiet); border: 0; }
+  /* The dial is grey at rest and turns black while it's being moved. */
+  input[type=range].moving::-webkit-slider-thumb { background: var(--ink); }
+  input[type=range].moving::-moz-range-thumb { background: var(--ink); }
   input[type=range]:focus { outline: none; }
 
   .nav { display: flex; justify-content: space-between; align-items: center; margin: -8px -12px 8px; }
@@ -645,6 +648,9 @@ document.querySelectorAll('#menu input[type=range]').forEach(r => {
   r.addEventListener('touchstart', e => e.preventDefault(), { passive: false });   // stops the native jump-to-finger
   let drag = null;
   r.addEventListener('pointerdown', e => {
+    r.classList.add('moving');
+    const done = () => { r.classList.remove('moving'); window.removeEventListener('pointerup', done); window.removeEventListener('pointercancel', done); };
+    window.addEventListener('pointerup', done); window.addEventListener('pointercancel', done);
     if (e.pointerType === 'mouse') return;
     drag = { id: e.pointerId, x: e.clientX, v: +r.value };
     try { r.setPointerCapture(e.pointerId); } catch (err) {}
