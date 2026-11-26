@@ -721,7 +721,7 @@ const fileInput = document.getElementById('file');
 fileInput.addEventListener('change', () => { openFile(fileInput.files[0]); fileInput.value = ''; });
 
 // Computer: left click plays or pauses, right click opens the small menu (Open file, Dark),
-// M opens and closes the settings menu, the mouse wheel over a slider moves it.
+// G opens and closes the settings menu, the mouse wheel over a slider moves it.
 // Phone: a tap plays or pauses, a double tap opens the small menu, swipe up opens the settings
 // menu, swipe down anywhere (sliders and buttons too) closes it.
 // A tap or click outside the menus always plays or pauses, so the settings menu can stay up while reading.
@@ -834,7 +834,7 @@ document.addEventListener('keydown', e => {
   else if (k === 'ArrowUp') { e.preventDefault(); settings.wpm = Math.min(MAX_WPM, settings.wpm + 5); saveSettings(); updateMenu(); }
   else if (k === 'ArrowDown') { e.preventDefault(); settings.wpm = Math.max(MIN_WPM, settings.wpm - 5); saveSettings(); updateMenu(); }
   else if (k === 'Escape') { if (ctxOpen()) closeCtx(); else if (menuOpen()) closeMenu(); }
-  else if (k === 'm' || k === 'M') { menuOpen() ? closeMenu() : openMenu(); }
+  else if (k === 'g' || k === 'G') { menuOpen() ? closeMenu() : openMenu(); }   // next to S D F (was M)
   else if (k === 'o' || k === 'O') { fileInput.click(); }
 });
 
