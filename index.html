@@ -221,6 +221,7 @@ function savePos() { if (doc) try { localStorage.setItem(posKey(), String(idx));
 
 const SENT_END = /[.!?…]["'”’)\]]*$/;
 const CLAUSE = /[,;:—–]["'”’)\]]*$/;
+const DASH = /^[-–—―]+$/;
 const ABBREV = /^(mr|mrs|ms|dr|prof|sr|jr|st|vs|etc|e\.g|i\.e|no|fig|vol|approx|inc|ltd|co|mt)\.$/i;
 
 // paragraphs: array of strings. pageOf: optional array giving the page number of each paragraph.
@@ -236,12 +237,16 @@ function buildDoc(name, paragraphs, pageOf) {
     rawCount += raw.length;
     first.push(...raw.slice(0, 50 - first.length));
     // A doubled word ("Nai Nai", "very very") shows as one screen. Not across a comma or full stop.
+    // A dash standing on its own (- – — --) goes with the word before it ("said —").
     const parts = [];
     raw.forEach(w => {
       const prev = parts[parts.length - 1];
-      if (prev && !prev.includes(' ') && /[\p{L}\p{N}]$/u.test(prev) && letters(prev) && letters(prev) === letters(w)) parts[parts.length - 1] = prev + ' ' + w;
+      if (prev && DASH.test(w)) parts[parts.length - 1] = prev + ' ' + w;
+      else if (prev && !prev.includes(' ') && /[\p{L}\p{N}]$/u.test(prev) && letters(prev) && letters(prev) === letters(w)) parts[parts.length - 1] = prev + ' ' + w;
       else parts.push(w);
     });
+    // A paragraph that opens with a dash has no word before it: the dash goes with the next word.
+    if (parts.length > 1 && DASH.test(parts[0])) parts.splice(0, 2, parts[0] + ' ' + parts[1]);
     if (!parts.length) return;
     if (pages) { const pg = pageOf[pi]; while (pages.length <= pg) pages.push(words.length); }
     parts.forEach(w => {
@@ -458,7 +463,9 @@ function delayFor(i) {
   if (len > 8) m += (len - 8) * 0.06;
   if (len > 14) m += 0.2;
   if (/\d/.test(w)) m += 0.3;
-  if (w.includes(' ')) m += 0.6; // a doubled word is two words on one screen
+  // A word with its dash gets a comma's pause (CLAUSE below already covers — and –).
+  if (/ [-–—―]+$/.test(w)) { if (!CLAUSE.test(w)) m += 0.5; }
+  else if (w.includes(' ')) m += 0.6; // a doubled word is two words on one screen
   if (doc.breaks[i] === 2) m += 1.6;
   else if (doc.breaks[i] === 1) m += 1.0;
   else if (CLAUSE.test(w)) m += 0.5;
