@@ -102,10 +102,10 @@
   }
   input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--quiet); border: 0; }
   /* The dial is grey at rest and turns black while it's being moved. */
-  /* Each slider has its own colour (speed blue, size red, position green), so the edge of vision can
+  /* Each slider has its own colour (speed green, size red, position blue), so the edge of vision can
      tell which one is under the finger or mouse without looking (Mark 11-26). */
-  #wpm { --dial: #016dca; } #size { --dial: #a6111a; } #pos { --dial: #129a00; }
-  :root.dark #wpm { --dial: #3a95e6; } :root.dark #size { --dial: #e0525a; } :root.dark #pos { --dial: #3cc02a; }
+  #wpm { --dial: #129a00; } #size { --dial: #a6111a; } #pos { --dial: #016dca; }
+  :root.dark #wpm { --dial: #3cc02a; } :root.dark #size { --dial: #e0525a; } :root.dark #pos { --dial: #3a95e6; }
   input[type=range].moving::-webkit-slider-thumb { background: var(--dial); }
   input[type=range].moving::-moz-range-thumb { background: var(--dial); }
   /* With a mouse it also takes its colour on hover, before the wheel moves it.
