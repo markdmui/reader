@@ -104,8 +104,12 @@
   /* The dial is grey at rest and turns black while it's being moved. */
   /* Each slider has its own colour (speed green, size red, position blue), so the edge of vision can
      tell which one is under the finger or mouse without looking (Mark 11-26). */
-  #wpm { --dial: #0fb300; } #size { --dial: #cc0a16; } #pos { --dial: #0070e6; }
-  :root.dark #wpm { --dial: #2ad417; } :root.dark #size { --dial: #f2333e; } :root.dark #pos { --dial: #2a8ef7; }
+  /* Set on the header row too, so the header takes the same colour while its slider moves. */
+  #wpm, .row:has(+ #wpm) { --dial: #0fb300; } #size, .row:has(+ #size) { --dial: #cc0a16; } #pos, .row:has(+ #pos) { --dial: #0070e6; }
+  :root.dark #wpm, :root.dark .row:has(+ #wpm) { --dial: #2ad417; }
+  :root.dark #size, :root.dark .row:has(+ #size) { --dial: #f2333e; }
+  :root.dark #pos, :root.dark .row:has(+ #pos) { --dial: #2a8ef7; }
+  .row:has(+ input.moving) h3 { color: var(--dial); }
   input[type=range].moving::-webkit-slider-thumb { background: var(--dial); }
   input[type=range].moving::-moz-range-thumb { background: var(--dial); }
   /* With a mouse it also takes its colour on hover, before the wheel moves it.
@@ -123,13 +127,13 @@
   .nav button.flash { animation: flash 280ms ease-out; border-radius: 10px; }
   @keyframes flash { from { background: var(--press); } to { background: transparent; } }
 
-  /* Right-click menu (double tap on a phone): Open file and Dark/Light. */
+  /* Right-click menu (double tap on a phone): Open file, Dark/Light, Reset. */
   #ctx {
-    position: fixed; z-index: 5; min-width: 150px; padding: 4px 0;
+    position: fixed; z-index: 5; min-width: 180px; padding: 6px 0; font-size: 16px;
     background: var(--bg); border: 1px solid var(--line); display: none;
   }
   #ctx.open { display: block; }
-  #ctx button { display: block; width: 100%; text-align: left; padding: 8px 16px; color: var(--ink); }
+  #ctx button { display: block; width: 100%; text-align: left; padding: 12px 20px; min-height: 48px; color: var(--ink); }
   #ctx button:hover { text-decoration: none; background: var(--hover); }
 
   button {
@@ -182,6 +186,7 @@
 <div id="ctx" role="menu">
   <button id="open" role="menuitem">Open file</button>
   <button id="theme" role="menuitem">Dark</button>
+  <button id="reset" role="menuitem">Reset</button>
 </div>
 
 <input type="file" id="file" accept=".pdf,.docx,.txt,.md,.text,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain">
@@ -682,6 +687,8 @@ pos.addEventListener('pointerdown', () => { draggingPos = true; });
 playBtn.addEventListener('click', toggle);
 document.getElementById('open').addEventListener('click', () => { closeCtx(); fileInput.click(); });
 themeBtn.addEventListener('click', () => { closeCtx(); settings.dark = !settings.dark; saveSettings(); applyTheme(); updateMenu(); });
+// Reset reloads the page; the book, place and settings come back from storage.
+document.getElementById('reset').addEventListener('click', () => location.reload());
 
 // The small right-click menu opens where the click or double tap was, kept inside the screen.
 const ctx = document.getElementById('ctx');
