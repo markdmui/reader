@@ -105,7 +105,7 @@
 
   .nav { display: flex; justify-content: space-between; align-items: center; margin: -8px -12px 8px; }
   .nav button { font-size: 34px; line-height: 1; width: 76px; height: 56px; }
-  .nav #play { padding: 0; }
+  .nav #play { padding: 0; width: 99px; }   /* 30% wider than the arrows */
   .nav #play svg { display: block; margin: auto; width: 18px; height: 20px; fill: currentColor; }
   /* Pressed state: a light grey fill shows the instant you press and fades straight away. */
   /* Kept very faint and rounded so it registers at the edge of vision without pulling the eye off the word. */
@@ -638,6 +638,30 @@ pos.addEventListener('input', () => {
   idx = +pos.value; rampAt = performance.now(); showMsg(''); render();
   if (playing) restart();
 });
+// Touch: a slider works like a trackpad, so it can be used by feel while the eyes stay on the word.
+// Where the finger lands doesn't matter and a tap does nothing; sliding moves the dial by the same
+// distance from wherever it already is. A mouse keeps the normal behaviour (click a spot to jump there).
+document.querySelectorAll('#menu input[type=range]').forEach(r => {
+  r.addEventListener('touchstart', e => e.preventDefault(), { passive: false });   // stops the native jump-to-finger
+  let drag = null;
+  r.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse') return;
+    drag = { id: e.pointerId, x: e.clientX, v: +r.value };
+    try { r.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  r.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const span = +r.max - +r.min, travel = r.getBoundingClientRect().width - 14;   // 14 = knob width
+    if (span <= 0 || travel <= 0) return;
+    const before = r.value;
+    r.value = Math.min(+r.max, Math.max(+r.min, drag.v + (e.clientX - drag.x) / travel * span));
+    if (r.value !== before) r.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const end = e => { if (drag && e.pointerId === drag.id) { drag = null; r.dispatchEvent(new Event('change', { bubbles: true })); } };
+  r.addEventListener('pointerup', end);
+  r.addEventListener('pointercancel', end);
+});
+
 // While a finger or mouse is on the position slider, the reading doesn't pull the knob away from it.
 pos.addEventListener('pointerdown', () => { draggingPos = true; });
 ['pointerup', 'pointercancel', 'change'].forEach(t => pos.addEventListener(t, () => { draggingPos = false; savePos(); }));
