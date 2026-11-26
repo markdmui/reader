@@ -517,11 +517,10 @@ const wpm = document.getElementById('wpm'), wpmVal = document.getElementById('wp
 const size = document.getElementById('size'), sizeVal = document.getElementById('sizeVal');
 const pos = document.getElementById('pos'), where = document.getElementById('where');
 const playBtn = document.getElementById('play'), themeBtn = document.getElementById('theme');
-let resumeAfterMenu = false;
+let draggingPos = false;
 
+// The menu never stops the reading: words keep going above it while you change settings.
 function openMenu() {
-  resumeAfterMenu = playing;
-  pause();
   menu.classList.add('open');
   updateMenu();
   // Lift the word so it sits in the space above the menu.
@@ -531,8 +530,6 @@ function closeMenu() {
   if (!menu.classList.contains('open')) return;
   menu.classList.remove('open');
   stage.style.bottom = '';
-  if (resumeAfterMenu) play();
-  resumeAfterMenu = false;
 }
 function menuOpen() { return menu.classList.contains('open'); }
 
@@ -548,7 +545,7 @@ function updateMenu() {
   playBtn.textContent = playing ? 'Pause' : 'Play';
   if (!doc) { where.textContent = 'No file open'; pos.disabled = true; return; }
   pos.disabled = false;
-  pos.value = idx;
+  if (!draggingPos) pos.value = idx;
   let at;
   if (doc.pages && doc.pages.length > 1) {
     let pg = 0; while (pg < doc.pages.length - 1 && doc.pages[pg + 1] <= idx) pg++;
@@ -562,9 +559,15 @@ function updateMenu() {
 
 wpm.addEventListener('input', () => { settings.wpm = +wpm.value; saveSettings(); updateMenu(); });
 size.addEventListener('input', () => { settings.size = +size.value; saveSettings(); render(); updateMenu(); });
-pos.addEventListener('input', () => { if (!doc) return; idx = +pos.value; warm = RAMP; showMsg(''); render(); });
-pos.addEventListener('change', savePos);
-playBtn.addEventListener('click', () => { if (playing) { pause(); resumeAfterMenu = false; } else { resumeAfterMenu = true; closeMenu(); } });
+pos.addEventListener('input', () => {
+  if (!doc) return;
+  idx = +pos.value; warm = RAMP; showMsg(''); render();
+  if (playing) restart();
+});
+// While a finger or mouse is on the position slider, the reading doesn't pull the knob away from it.
+pos.addEventListener('pointerdown', () => { draggingPos = true; });
+['pointerup', 'pointercancel', 'change'].forEach(t => pos.addEventListener(t, () => { draggingPos = false; savePos(); }));
+playBtn.addEventListener('click', toggle);
 document.getElementById('open').addEventListener('click', () => fileInput.click());
 themeBtn.addEventListener('click', () => { settings.dark = !settings.dark; saveSettings(); applyTheme(); updateMenu(); });
 
@@ -626,7 +629,7 @@ document.addEventListener('pointercancel', () => { touchStart = null; });
 
 document.addEventListener('contextmenu', e => {
   e.preventDefault();
-  if (e.target.closest('#menu')) return;
+  if (e.target.closest && e.target.closest('#menu')) return;
   // Phones fire contextmenu on a long press; ignore it so it never opens the menu by accident.
   if (e.pointerType === 'touch' || (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents)) return;
   menuOpen() ? closeMenu() : openMenu();
