@@ -14,6 +14,7 @@
     --quiet: #a3a3a3;
     --line: #dddde1;
     --hover: #f2f2f4;
+    --press: #ebebee;
     --accent: #2b7ab5;
     --pivot: #d0312d;
   }
@@ -24,6 +25,7 @@
     --quiet: #77736c;
     --line: #3a3833;
     --hover: #24231f;
+    --press: #2b2a26;
     --accent: #5aa9e0;
     --pivot: #ff5a4f;
   }
@@ -103,11 +105,12 @@
 
   .nav { display: flex; justify-content: space-between; align-items: center; margin: -8px -12px 8px; }
   .nav button { font-size: 34px; line-height: 1; width: 76px; height: 56px; }
-  .nav #play { font-size: 17px; width: auto; padding: 0 20px; }
+  .nav #play { padding: 0; }
+  .nav #play svg { display: block; margin: auto; width: 18px; height: 20px; fill: currentColor; }
   /* Pressed state: a light grey fill shows the instant you press and fades straight away. */
   /* Kept very faint and rounded so it registers at the edge of vision without pulling the eye off the word. */
   .nav button.flash { animation: flash 280ms ease-out; border-radius: 10px; }
-  @keyframes flash { from { background: var(--hover); } to { background: transparent; } }
+  @keyframes flash { from { background: var(--press); } to { background: transparent; } }
 
   /* Right-click menu (double tap on a phone): Open file and Dark/Light. */
   #ctx {
@@ -151,7 +154,7 @@
 <div id="menu" role="dialog" aria-label="Menu">
   <div class="nav">
     <button id="back" title="Previous sentence, Left arrow" aria-label="Previous sentence">&lsaquo;</button>
-    <button id="play" title="Space">Play</button>
+    <button id="play" title="Space" aria-label="Play"></button>
     <button id="fwd" title="Next sentence, Right arrow" aria-label="Next sentence">&rsaquo;</button>
   </div>
 
@@ -389,6 +392,31 @@ async function openFile(file) {
   }
 }
 
+// A book saved on the device keeps the word splits from the day it was opened. On load it is
+// split again with today's rules (doubled words, dashes), and the saved place is carried across.
+function refreshStored(d, start) {
+  const paras = [], pageOf = d.pages ? [] : null;
+  let cur = [], first = 0, pg = 0;
+  d.words.forEach((w, i) => {
+    cur.push(w);
+    if (d.breaks[i] === 2 || i === d.words.length - 1) {
+      if (pageOf) { while (pg < d.pages.length - 1 && d.pages[pg + 1] <= first) pg++; pageOf.push(pg); }
+      paras.push(cur.join(' ')); cur = []; first = i + 1;
+    }
+  });
+  const n = buildDoc(d.name, paras, pageOf);
+  n.id = d.id;
+  if (n.words.length === d.words.length) return { d, start };
+  if (n.pages) while (n.pages.length < d.pages.length) n.pages.push(n.words.length);
+  // Old place -> new place: count the single words before it, then find the screen that holds that word.
+  const count = w => w.split(' ').length;
+  let r = 0; for (let i = 0; i < start; i++) r += count(d.words[i]);
+  let j = 0, acc = 0; while (j < n.words.length - 1 && acc + count(n.words[j]) <= r) acc += count(n.words[j++]);
+  idb.set('doc', { ...n, breaks: Array.from(n.breaks) }).catch(() => {});
+  try { localStorage.setItem('reader.pos.' + n.id, String(j)); } catch (e) {}
+  return { d: n, start: j };
+}
+
 function setDoc(d, start) {
   doc = d;
   doc.breaks = Uint8Array.from(d.breaks);
@@ -558,6 +586,8 @@ const size = document.getElementById('size'), sizeVal = document.getElementById(
 const pos = document.getElementById('pos'), where = document.getElementById('where');
 const playBtn = document.getElementById('play'), themeBtn = document.getElementById('theme');
 let draggingPos = false;
+const ICON_PLAY = '<svg viewBox="0 0 18 20" aria-hidden="true"><path d="M2 1.5v17L17 10z"/></svg>';
+const ICON_PAUSE = '<svg viewBox="0 0 18 20" aria-hidden="true"><rect x="3" y="2" width="4" height="16"/><rect x="11" y="2" width="4" height="16"/></svg>';
 
 // The menu never stops the reading: words keep going above it while you change settings.
 function openMenu() {
@@ -582,7 +612,11 @@ function updateMenu() {
   wpm.value = settings.wpm; wpmVal.textContent = settings.wpm;
   size.value = baseSize(); sizeVal.textContent = baseSize();
   themeBtn.textContent = settings.dark ? 'Light' : 'Dark';
-  playBtn.textContent = playing ? 'Pause' : 'Play';
+  if (playBtn.dataset.state !== String(playing)) {
+    playBtn.dataset.state = playing;
+    playBtn.innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+    playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  }
   if (!doc) { where.textContent = 'No file open'; pos.disabled = true; return; }
   pos.disabled = false;
   if (!draggingPos) pos.value = idx;
@@ -702,7 +736,7 @@ document.addEventListener('pointerup', e => {
   }
   if (!s.onStage || Math.abs(dx) >= 12 || Math.abs(dy) >= 12) return;
   const now = performance.now();
-  if (doc && lastTap && now - lastTap.t < 300 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 40) {
+  if (doc && lastTap && now - lastTap.t < 450 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 60) {
     lastTap = null;
     toggle();   // undo the first tap's play or pause
     openCtx(e.clientX, e.clientY);
@@ -777,7 +811,10 @@ render();
   if (!last) return;
   try {
     const d = await idb.get('doc');
-    if (d && d.id === last) setDoc(d, Number(localStorage.getItem('reader.pos.' + d.id)) || 0);
+    if (d && d.id === last) {
+      const f = refreshStored(d, Number(localStorage.getItem('reader.pos.' + d.id)) || 0);
+      setDoc(f.d, f.start);
+    }
   } catch (e) {}
 })();
 </script>
