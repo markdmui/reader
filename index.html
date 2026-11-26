@@ -102,12 +102,16 @@
   }
   input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--quiet); border: 0; }
   /* The dial is grey at rest and turns black while it's being moved. */
-  input[type=range].moving::-webkit-slider-thumb { background: var(--ink); }
-  input[type=range].moving::-moz-range-thumb { background: var(--ink); }
-  /* With a mouse it also turns black on hover, so the edge of vision shows the wheel will move it.
+  /* Each slider has its own colour (speed blue, size red, position black), so the edge of vision can
+     tell which one is under the finger or mouse without looking (Mark 11-26). */
+  #wpm { --dial: #0b4a8b; } #size { --dial: #a6111a; } #pos { --dial: #000000; }
+  :root.dark #wpm { --dial: #4d8fd6; } :root.dark #size { --dial: #e0525a; } :root.dark #pos { --dial: var(--ink); }
+  input[type=range].moving::-webkit-slider-thumb { background: var(--dial); }
+  input[type=range].moving::-moz-range-thumb { background: var(--dial); }
+  /* With a mouse it also takes its colour on hover, before the wheel moves it.
      Not on a phone, where a tap leaves hover stuck. */
-  :root:not(.touch) input[type=range]:hover::-webkit-slider-thumb { background: var(--ink); }
-  :root:not(.touch) input[type=range]:hover::-moz-range-thumb { background: var(--ink); }
+  :root:not(.touch) input[type=range]:hover::-webkit-slider-thumb { background: var(--dial); }
+  :root:not(.touch) input[type=range]:hover::-moz-range-thumb { background: var(--dial); }
   input[type=range]:focus { outline: none; }
 
   .nav { display: flex; justify-content: space-between; align-items: center; margin: -8px -12px 8px; }
