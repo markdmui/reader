@@ -226,10 +226,22 @@ const ABBREV = /^(mr|mrs|ms|dr|prof|sr|jr|st|vs|etc|e\.g|i\.e|no|fig|vol|approx|
 // paragraphs: array of strings. pageOf: optional array giving the page number of each paragraph.
 function buildDoc(name, paragraphs, pageOf) {
   const words = [], breaks = [], pages = pageOf ? [] : null;
+  const first = [];
+  let rawCount = 0;
+  const letters = w => w.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
   paragraphs.forEach((p, pi) => {
     // Long hyphenated words ("happy-for-other-people") are shown in pieces, each keeping its hyphen.
-    const parts = p.split(/\s+/).filter(Boolean)
+    const raw = p.split(/\s+/).filter(Boolean)
       .flatMap(w => w.length > 13 && /\p{L}-\p{L}/u.test(w) ? w.split(/(?<=\p{L}-)(?=\p{L})/u) : [w]);
+    rawCount += raw.length;
+    first.push(...raw.slice(0, 50 - first.length));
+    // A doubled word ("Nai Nai", "very very") shows as one screen. Not across a comma or full stop.
+    const parts = [];
+    raw.forEach(w => {
+      const prev = parts[parts.length - 1];
+      if (prev && !prev.includes(' ') && /[\p{L}\p{N}]$/u.test(prev) && letters(prev) && letters(prev) === letters(w)) parts[parts.length - 1] = prev + ' ' + w;
+      else parts.push(w);
+    });
     if (!parts.length) return;
     if (pages) { const pg = pageOf[pi]; while (pages.length <= pg) pages.push(words.length); }
     parts.forEach(w => {
@@ -238,7 +250,8 @@ function buildDoc(name, paragraphs, pageOf) {
     });
     breaks[breaks.length - 1] = 2;
   });
-  return { id: hash(name + '|' + words.length + '|' + words.slice(0, 50).join(' ')), name, words, breaks, pages };
+  // The id uses the words as split before joining, so places saved before 11-26 still match.
+  return { id: hash(name + '|' + rawCount + '|' + first.join(' ')), name, words, breaks, pages };
 }
 
 function hash(s) {
@@ -388,7 +401,7 @@ function pivotIndex(core) {
 function showWord(w) {
   // Leading quotes and brackets don't count when finding the middle letter.
   // Work in whole characters so emoji and accented letters stay in one piece.
-  const chars = Array.from(w);
+  const chars = Array.from(w.replace(/ /g, ' ')); // keep the space in "Nai Nai" visible
   const isAlnum = c => /[\p{L}\p{N}]/u.test(c);
   const lead = chars.findIndex(isAlnum);
   const core = lead < 0 ? [] : chars.slice(lead, chars.length - [...chars].reverse().findIndex(isAlnum));
@@ -445,6 +458,7 @@ function delayFor(i) {
   if (len > 8) m += (len - 8) * 0.06;
   if (len > 14) m += 0.2;
   if (/\d/.test(w)) m += 0.3;
+  if (w.includes(' ')) m += 0.6; // a doubled word is two words on one screen
   if (doc.breaks[i] === 2) m += 1.6;
   else if (doc.breaks[i] === 1) m += 1.0;
   else if (CLAUSE.test(w)) m += 0.5;
