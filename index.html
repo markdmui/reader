@@ -72,7 +72,14 @@
     transform-origin: 0 50%; will-change: transform;
   }
   #lens.settle { transition: transform 220ms cubic-bezier(.2, .7, .3, 1); }
-  #lens .w { color: var(--quiet); }
+  /* Neighbours nearly black (Mark 11-26), the chosen word in ink with its red letter and a thin underline.
+     --s is the zoom, so the underline stays about 1.5 px on screen at any size. */
+  #lens .w { color: #45454a; }
+  :root.dark #lens .w { color: #bdb8b0; }
+  #lens .w.on {
+    text-decoration: underline; text-decoration-color: var(--quiet);
+    text-decoration-thickness: calc(1.5px / var(--s, 1)); text-underline-offset: 0.16em;
+  }
   #lens .w:not(.on) { opacity: 0; transition: opacity 180ms ease-out; }
   #lensWrap.in #lens .w:not(.on) { opacity: 1; }
   #lens .w.on { color: var(--ink); }
@@ -889,6 +896,7 @@ function lensNearest() {
 function lensApply() {
   const W = lensWrap.clientWidth;
   lens.style.transform = `translate(${W / 2 - lensC * lensS}px, -50%) scale(${lensS})`;
+  lens.style.setProperty('--s', lensS);
   const n = lensNearest();
   if (n !== lensCur) {
     if (lensWords[lensCur]) lensWords[lensCur].classList.remove('on');
