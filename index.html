@@ -57,6 +57,29 @@
   #word .p { color: var(--pivot); }
   #word .r { text-align: left; overflow: visible; }
   #box { position: relative; width: 100%; }
+
+  /* Magnifier (Mark 11-26): drag up from the word and the line of text around it zooms out, the more the
+     higher the finger goes; sideways moves along it; letting go reads on from the word in the middle.
+     The current word keeps its ink and red letter, the rest are grey and fade out at the screen edges. */
+  #lensWrap {
+    position: absolute; inset: 0; display: none; pointer-events: none;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+  }
+  #lensWrap.on { display: block; }
+  #lens {
+    position: absolute; left: 0; top: 50%; white-space: nowrap; line-height: 1.2;
+    transform-origin: 0 50%; will-change: transform;
+  }
+  #lens.settle { transition: transform 220ms cubic-bezier(.2, .7, .3, 1); }
+  #lens .w { color: var(--quiet); }
+  #lens .w:not(.on) { opacity: 0; transition: opacity 180ms ease-out; }
+  #lensWrap.in #lens .w:not(.on) { opacity: 1; }
+  #lens .w.on { color: var(--ink); }
+  #lens .w.on b { color: var(--pivot); }
+  #lens b { font-weight: inherit; }
+  #lens .para { margin-right: 1.2em; }
+  .lensing #word { visibility: hidden; }
   /* Two faint ticks mark where the red letter lands, so the eye can park there. */
   #ticks { position: absolute; left: 50%; top: 50%; pointer-events: none; }
   #ticks::before, #ticks::after {
@@ -138,7 +161,7 @@
   .nav button.flash { animation: flash 280ms ease-out; border-radius: 10px; }
   @keyframes flash { from { background: var(--press); } to { background: transparent; } }
 
-  /* Right-click menu (double tap on a phone): Open file, Dark/Light, Reset. */
+  /* Right-click menu (double tap on a phone): Settings, Open file, Dark/Light, Reset. */
   #ctx {
     position: fixed; z-index: 5; min-width: 180px; padding: 6px 0; font-size: 16px;
     background: var(--bg); border: 1px solid var(--line); display: none;
@@ -171,6 +194,7 @@
 <div id="stage">
   <div id="box">
     <div id="word"><span class="l"></span><span class="p"></span><span class="r"></span></div>
+    <div id="lensWrap"><div id="lens"></div></div>
     <div id="ticks"></div>
     <div id="msg"></div>
   </div>
@@ -196,6 +220,7 @@
 </div>
 
 <div id="ctx" role="menu">
+  <button id="settingsBtn" role="menuitem">Settings</button>
   <button id="open" role="menuitem">Open file</button>
   <button id="theme" role="menuitem">Dark</button>
   <button id="reset" role="menuitem">Reset</button>
@@ -471,7 +496,8 @@ function pivotIndex(core) {
   return 4;
 }
 
-function showWord(w) {
+// Splits a word into [before, red letter, after].
+function splitWord(w) {
   // Leading quotes and brackets don't count when finding the middle letter.
   // Work in whole characters so emoji and accented letters stay in one piece.
   const chars = Array.from(w.replace(/ /g, ' ')); // keep the space in "Nai Nai" visible
@@ -481,9 +507,11 @@ function showWord(w) {
   let p = core.length ? lead + pivotIndex(core) : Math.floor((chars.length - 1) / 2);
   // Never put the red mark on a comma or dot inside a number like 1,250.
   if (core.length) while (p < chars.length - 1 && !isAlnum(chars[p])) p++;
-  lEl.textContent = chars.slice(0, p).join('');
-  pEl.textContent = chars[p] || '';
-  rEl.textContent = chars.slice(p + 1).join('');
+  return [chars.slice(0, p).join(''), chars[p] || '', chars.slice(p + 1).join('')];
+}
+
+function showWord(w) {
+  [lEl.textContent, pEl.textContent, rEl.textContent] = splitWord(w);
   fitWord();
 }
 
@@ -708,6 +736,7 @@ document.querySelectorAll('#menu input[type=range]').forEach(r => {
 pos.addEventListener('pointerdown', () => { draggingPos = true; });
 ['pointerup', 'pointercancel', 'change'].forEach(t => pos.addEventListener(t, () => { draggingPos = false; savePos(); }));
 playBtn.addEventListener('click', toggle);
+document.getElementById('settingsBtn').addEventListener('click', () => { closeCtx(); menuOpen() ? closeMenu() : openMenu(); });
 document.getElementById('open').addEventListener('click', () => { closeCtx(); fileInput.click(); });
 themeBtn.addEventListener('click', () => { closeCtx(); settings.dark = !settings.dark; saveSettings(); applyTheme(); updateMenu(); });
 // Reset reloads the page; the book, place and settings come back from storage.
@@ -760,8 +789,9 @@ fileInput.addEventListener('change', () => { openFile(fileInput.files[0]); fileI
 
 // Computer: left click plays or pauses, right click opens the small menu (Open file, Dark),
 // G opens and closes the settings menu, the mouse wheel over a slider moves it.
-// Phone: a tap plays or pauses, a double tap opens the small menu, swipe up opens the settings
-// menu, swipe down anywhere (sliders and buttons too) closes it.
+// Phone: a tap plays or pauses, a double tap opens the small menu, one finger dragging up from the
+// word opens the magnifier, two fingers swiping up open the settings menu, swipe down anywhere
+// (sliders and buttons too) closes it.
 // A tap or click outside the menus always plays or pauses, so the settings menu can stay up while reading.
 // While the small menu is open, a click or tap outside it only closes it.
 function primary() { if (!doc) fileInput.click(); else toggle(); }
@@ -795,8 +825,8 @@ document.addEventListener('pointerup', e => {
   touchStart = null;
   if (swallow) return;
   if (Math.abs(dy) >= 40 && Math.abs(dy) > Math.abs(dx)) {
-    if (dy < 0 && !menuOpen() && !s.slider) openMenu();
-    else if (dy > 0 && menuOpen()) {
+    // One finger up is the magnifier now; Settings opens with two fingers or from the double-tap menu.
+    if (dy > 0 && menuOpen()) {
       if (s.slider && s.slider.value !== s.value) { s.slider.value = s.value; s.slider.dispatchEvent(new Event('input')); }
       if (s.arrow && doc) { idx = s.idx; render(); savePos(); if (playing) restart(); }
       closeMenu();
@@ -815,6 +845,170 @@ document.addEventListener('pointerup', e => {
   primary();
 });
 document.addEventListener('pointercancel', () => { touchStart = null; });
+
+/* ---------- Magnifier ---------- */
+// One finger (or the mouse) pressed on the word and dragged up zooms out over the text around the
+// current word: the higher the finger goes, the more words show. Moving sideways slides along the text
+// with the finger; holding near a screen edge keeps it moving. Letting go reads on from the word in the
+// middle (playing again if it was playing). Two fingers swiping up open the settings menu instead.
+const lensWrap = document.getElementById('lensWrap'), lens = document.getElementById('lens');
+const LENS_START = 14;   // px up before the magnifier turns on
+const LENS_ZOOM = 70;    // px of further drag that halves the size
+const LENS_MIN = 0.12;   // the smallest it gets
+const LENS_SPAN = 150;   // words built each side; rebuilt around the middle when you get near an end
+let lensTrack = null, lensOn = false, lensSettling = false, lensWasPlaying = false, lensRaf = 0;
+let lensFrom = 0, lensWords = [], lensAnchors = [], lensC = 0, lensS = 1, lensLastX = 0, lensCur = -1;
+
+// Lays out the words around `center` in one line. Each word's anchor is the middle of its red letter,
+// the same point the single word is lined up on, so going in and out of the magnifier doesn't jump.
+function lensBuild(center) {
+  lensFrom = Math.max(0, center - LENS_SPAN);
+  const to = Math.min(doc.words.length - 1, center + LENS_SPAN);
+  const frag = document.createDocumentFragment();
+  for (let i = lensFrom; i <= to; i++) {
+    const [a, p, r] = splitWord(doc.words[i]);
+    const w = document.createElement('span');
+    w.className = doc.breaks[i] === 2 ? 'w para' : 'w';
+    const b = document.createElement('b');
+    b.textContent = p;
+    w.append(a, b, r);
+    frag.append(w, ' ');
+  }
+  lens.replaceChildren(frag);
+  lensWords = Array.from(lens.children);
+  lensAnchors = lensWords.map(w => { const b = w.firstElementChild; return b.offsetLeft + b.offsetWidth / 2; });
+  lensCur = -1;
+}
+
+function lensNearest() {
+  let lo = 0, hi = lensAnchors.length - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (lensAnchors[mid] < lensC) lo = mid + 1; else hi = mid; }
+  return lo > 0 && lensC - lensAnchors[lo - 1] < lensAnchors[lo] - lensC ? lo - 1 : lo;
+}
+
+function lensApply() {
+  const W = lensWrap.clientWidth;
+  lens.style.transform = `translate(${W / 2 - lensC * lensS}px, -50%) scale(${lensS})`;
+  const n = lensNearest();
+  if (n !== lensCur) {
+    if (lensWords[lensCur]) lensWords[lensCur].classList.remove('on');
+    lensWords[n].classList.add('on');
+    lensCur = n;
+  }
+}
+
+function lensStart() {
+  lensOn = true; swallow = true;
+  lensWasPlaying = playing;
+  if (playing) pause();
+  closeCtx();
+  lens.style.fontSize = wordEl.style.fontSize;   // the same size as the word on screen
+  lens.classList.remove('settle');
+  lensWrap.classList.add('on');   // shown before building, so the words can be measured
+  document.documentElement.classList.add('lensing');
+  lensBuild(idx);
+  lensS = 1; lensC = lensAnchors[idx - lensFrom]; lensLastX = lensTrack.x;
+  lensApply();
+  requestAnimationFrame(() => lensWrap.classList.add('in'));   // the neighbours fade in
+  lensRaf = requestAnimationFrame(lensFrame);
+}
+
+function lensFrame() {
+  if (!lensOn) return;
+  const t = lensTrack;
+  lensS = Math.max(LENS_MIN, 1 / (1 + Math.max(0, t.y0 - t.y - LENS_START) / LENS_ZOOM));
+  lensC += (t.x - lensLastX) / lensS;
+  lensLastX = t.x;
+  // Near an edge it keeps sliding that way, faster the closer to the edge.
+  const W = window.innerWidth, edge = W * 0.12;
+  if (t.x < edge) lensC -= (1 - t.x / edge) * 12 / lensS;
+  else if (t.x > W - edge) lensC += (1 - (W - t.x) / edge) * 12 / lensS;
+  lensC = Math.min(lensAnchors[lensAnchors.length - 1], Math.max(lensAnchors[0], lensC));
+  // Close to either end of the built words: rebuild around the middle word, keeping the spot.
+  const n = lensNearest();
+  if ((n < 40 && lensFrom > 0) || (n > lensWords.length - 40 && lensFrom + lensWords.length < doc.words.length)) {
+    const g = lensFrom + n, off = lensC - lensAnchors[n];
+    lensBuild(g);
+    lensC = lensAnchors[g - lensFrom] + off;
+  }
+  lensApply();
+  lensRaf = requestAnimationFrame(lensFrame);
+}
+
+// Settles back to full size on the chosen word, then hands over to the normal one-word view.
+function lensEnd() {
+  cancelAnimationFrame(lensRaf);
+  lensOn = false; lensSettling = true;
+  const n = lensNearest();
+  idx = lensFrom + n;
+  lens.classList.add('settle');
+  lensWrap.classList.remove('in');
+  lensS = 1; lensC = lensAnchors[n];
+  lensApply();
+  setTimeout(() => {
+    lensWrap.classList.remove('on');
+    lens.classList.remove('settle');
+    document.documentElement.classList.remove('lensing');
+    lensSettling = false;
+    showMsg(''); render(); savePos();
+    if (lensWasPlaying) play();   // play() brings the soft start
+  }, 230);
+}
+
+const fingers = new Map();   // touch id -> where it went down (y)
+let twoFinger = null;        // set while two fingers are down: the biggest up or down movement
+document.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'touch') {
+    fingers.set(e.pointerId, e.clientY);
+    if (fingers.size === 2) {
+      twoFinger = { dy: 0 };
+      if (lensOn) lensEnd();
+      lensTrack = null;
+    }
+    if (fingers.size > 1) return;
+  }
+  if (!doc || lensSettling || swallow || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  if (!e.target.closest('#stage')) return;
+  lensTrack = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
+}, true);
+
+document.addEventListener('pointermove', e => {
+  const t = lensTrack;
+  if (!t || e.pointerId !== t.id) return;
+  t.x = e.clientX; t.y = e.clientY;
+  if (lensOn) return;
+  const dx = t.x - t.x0, dy = t.y - t.y0;
+  if (-dy >= LENS_START && -dy > Math.abs(dx)) lensStart();
+  else if (Math.abs(dx) > 30 || dy > 30) lensTrack = null;   // some other gesture
+});
+
+document.addEventListener('pointerup', e => {
+  if (fingers.has(e.pointerId)) {
+    const y0 = fingers.get(e.pointerId);
+    fingers.delete(e.pointerId);
+    if (twoFinger) {
+      swallow = true;
+      const dy = e.clientY - y0;
+      if (Math.abs(dy) > Math.abs(twoFinger.dy)) twoFinger.dy = dy;
+      if (!fingers.size) {
+        if (twoFinger.dy <= -40) openMenu();
+        else if (twoFinger.dy >= 40) closeMenu();
+        twoFinger = null;
+      }
+      return;
+    }
+  }
+  if (lensTrack && e.pointerId === lensTrack.id) {
+    lensTrack = null;
+    if (lensOn) { swallow = true; lensEnd(); }
+  }
+}, true);
+
+document.addEventListener('pointercancel', e => {
+  fingers.delete(e.pointerId);
+  if (!fingers.size) twoFinger = null;
+  if (lensTrack && e.pointerId === lensTrack.id) { lensTrack = null; if (lensOn) lensEnd(); }
+}, true);
 
 // Mouse wheel over a slider moves it one step per notch: speed 5 wpm, size 1 px, position one sentence.
 // Wheel up = more / forward. The dial shows black while it moves, like a drag.
