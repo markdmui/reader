@@ -104,6 +104,9 @@
   .nav { display: flex; justify-content: space-between; align-items: center; margin: -8px -12px 8px; }
   .nav button { font-size: 34px; line-height: 1; width: 76px; height: 56px; }
   .nav #play { font-size: 17px; width: auto; padding: 0 20px; }
+  /* Pressed state: a light grey fill shows the instant you press and fades straight away. */
+  .nav button.flash { animation: flash 280ms ease-out; }
+  @keyframes flash { from { background: var(--line); } to { background: transparent; } }
 
   /* Right-click menu (double tap on a phone): Open file and Dark/Light. */
   #ctx {
@@ -618,6 +621,13 @@ function openCtx(x, y) {
 }
 function closeCtx() { ctx.classList.remove('open'); }
 function ctxOpen() { return ctx.classList.contains('open'); }
+
+// On a phone the arrows and Play flash grey when tapped (restarted on every tap, so quick taps each show).
+// A mouse already gets the hover fill, so it gets no flash.
+document.querySelectorAll('.nav button').forEach(b => b.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse') return;
+  b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash');
+}));
 
 // Arrows: tap for one sentence, hold to keep jumping.
 ['back', 'fwd'].forEach(id => {
