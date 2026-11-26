@@ -112,6 +112,9 @@
   }
   button:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
   .nav button:hover { text-decoration: none; background: var(--hover); }
+  /* After a press the button goes quiet again: no fill, no colour, until the mouse leaves.
+     On a phone the hover look never shows (taps leave it stuck). */
+  button.pressed:hover, .touch button:hover { color: var(--quiet); text-decoration: none; background: none; }
   button:focus { outline: none; }
   button:focus-visible { outline: 1px solid var(--line); }
 
@@ -633,6 +636,18 @@ document.addEventListener('pointerup', e => {
   if (s.onStage && Math.abs(dx) < 12 && Math.abs(dy) < 12) primary();
 });
 document.addEventListener('pointercancel', () => { touchStart = null; });
+
+// Buttons drop their hover and focus look once pressed, so nothing lingers on them.
+document.addEventListener('pointerdown', e => {
+  document.documentElement.classList.toggle('touch', e.pointerType !== 'mouse');
+}, true);
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('button');
+  if (!b || !e.detail) return; // e.detail is 0 for keyboard presses: those keep focus
+  b.blur();
+  b.classList.add('pressed');
+  b.addEventListener('pointerleave', () => b.classList.remove('pressed'), { once: true });
+});
 
 document.addEventListener('contextmenu', e => {
   e.preventDefault();
