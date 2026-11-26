@@ -137,8 +137,8 @@
   <div class="row"><h3>SPEED</h3><span><b id="wpmVal">150</b> wpm</span></div>
   <input type="range" id="wpm" min="60" max="250" step="5" value="150" aria-label="Speed">
 
-  <div class="row"><h3>SIZE</h3><span><b id="sizeVal">64</b> px</span></div>
-  <input type="range" id="size" min="24" max="160" step="2" value="64" aria-label="Size">
+  <div class="row"><h3>SIZE</h3><span><b id="sizeVal">52</b> px</span></div>
+  <input type="range" id="size" min="40" max="65" step="1" value="52" aria-label="Size">
 
   <div class="row"><h3>POSITION</h3><span class="info" id="where"></span></div>
   <input type="range" id="pos" min="0" max="0" step="1" value="0" aria-label="Position">
@@ -150,6 +150,7 @@
   </div>
   <div class="links">
     <button id="open">Open file</button>
+    <button id="reset" hidden>Reset</button>
     <button id="theme">Dark</button>
   </div>
 </div>
@@ -398,8 +399,11 @@ function showWord(w) {
   fitWord();
 }
 
+// Word size: 40 to 65 px. Without a saved size, it picks one to suit the screen within that range.
+const MIN_SIZE = 40, MAX_SIZE = 65;
 function baseSize() {
-  return settings.size || Math.round(Math.min(window.innerWidth / 9, window.innerHeight / 5, 72));
+  const s = settings.size || Math.round(Math.min(window.innerWidth / 9, window.innerHeight / 5));
+  return Math.min(MAX_SIZE, Math.max(MIN_SIZE, s));
 }
 
 // A long word on a narrow phone gets shrunk just enough to fit, then the size goes back.
@@ -533,6 +537,7 @@ function openMenu() {
 function closeMenu() {
   if (!menu.classList.contains('open')) return;
   menu.classList.remove('open');
+  resetBtn.hidden = true;
   stage.style.bottom = '';
 }
 function menuOpen() { return menu.classList.contains('open'); }
@@ -607,8 +612,40 @@ fileInput.addEventListener('change', () => { openFile(fileInput.files[0]); fileI
 // so the menu can stay up while reading.
 function primary() { if (!doc) fileInput.click(); else toggle(); }
 
+// Hidden, for testing: double tap (or double click) and hold the second one for 0.7 s.
+// It stops the reading and shows a Reset button in the menu, which wipes everything this
+// app saved on the device (open document, places, settings) and starts fresh.
+let lastTapUp = 0, holdTimer = null, holdFired = false;
+stage.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  clearTimeout(holdTimer);
+  if (performance.now() - lastTapUp < 350) holdTimer = setTimeout(revealReset, 700);
+});
+function endHold() {
+  clearTimeout(holdTimer);
+  lastTapUp = performance.now();
+  if (holdFired) { holdFired = false; lastTapUp = 0; return true; }   // the release after a hold is not a tap
+  return false;
+}
+function revealReset() {
+  holdFired = true;
+  pause();
+  resetBtn.hidden = false;
+  if (!menuOpen()) openMenu(); else stage.style.bottom = menu.offsetHeight + 'px';
+}
+const resetBtn = document.getElementById('reset');
+resetBtn.addEventListener('click', async () => {
+  pause();
+  doc = null;   // so nothing saves the place again while the page reloads
+  Object.keys(localStorage).filter(k => k.startsWith('reader.')).forEach(k => localStorage.removeItem(k));
+  try { if (idb.db) idb.db.close(); } catch (e) {}
+  await new Promise(res => { const r = indexedDB.deleteDatabase('reader'); r.onsuccess = r.onerror = r.onblocked = res; });
+  location.reload();
+});
+
 stage.addEventListener('pointerup', e => {
   if (e.pointerType !== 'mouse' || e.button !== 0) return;
+  if (endHold()) return;
   primary();
 });
 
@@ -622,6 +659,7 @@ document.addEventListener('pointerup', e => {
   if (e.pointerType === 'mouse' || !touchStart) return;
   const dx = e.clientX - touchStart.x, dy = e.clientY - touchStart.y, s = touchStart;
   touchStart = null;
+  if (s.onStage && endHold()) return;
   if (Math.abs(dy) >= 40 && Math.abs(dy) > Math.abs(dx)) {
     if (dy < 0 && !menuOpen()) openMenu();
     else if (dy > 0 && menuOpen()) closeMenu();
@@ -629,7 +667,7 @@ document.addEventListener('pointerup', e => {
   }
   if (s.onStage && Math.abs(dx) < 12 && Math.abs(dy) < 12) primary();
 });
-document.addEventListener('pointercancel', () => { touchStart = null; });
+document.addEventListener('pointercancel', () => { touchStart = null; clearTimeout(holdTimer); });
 
 document.addEventListener('contextmenu', e => {
   e.preventDefault();
