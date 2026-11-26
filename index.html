@@ -187,8 +187,8 @@ const SETTINGS_KEY = 'reader.settings';
 // Speed range: 60 wpm (a young reader, 1 s per word) to 250 wpm (a relaxed adult reader).
 const MIN_WPM = 60, MAX_WPM = 250;
 // Soft start: after play or a jump, reading starts at half speed and eases up evenly to full speed
-// over 3 seconds, the same at every speed.
-const RAMP_MS = 3000;
+// over 1.5 seconds, the same at every speed (Mark 11-26, was 3 s).
+const RAMP_MS = 1500;
 const defaults = { wpm: 150, size: null, dark: false };
 let settings = Object.assign({}, defaults, readJSON(SETTINGS_KEY));
 settings.wpm = Math.min(MAX_WPM, Math.max(MIN_WPM, +settings.wpm || defaults.wpm));
