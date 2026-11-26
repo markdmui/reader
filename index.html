@@ -220,7 +220,6 @@ function savePos() { if (doc) try { localStorage.setItem(posKey(), String(idx));
 /* ---------- Text into words ---------- */
 
 const SENT_END = /[.!?…]["'”’)\]]*$/;
-const CLAUSE = /[,;:—–]["'”’)\]]*$/;
 const DASH = /^[-–—―]+$/;
 const ABBREV = /^(mr|mrs|ms|dr|prof|sr|jr|st|vs|etc|e\.g|i\.e|no|fig|vol|approx|inc|ltd|co|mt)\.$/i;
 
@@ -463,12 +462,9 @@ function delayFor(i) {
   if (len > 8) m += (len - 8) * 0.06;
   if (len > 14) m += 0.2;
   if (/\d/.test(w)) m += 0.3;
-  // A word with its dash gets a comma's pause (CLAUSE below already covers — and –).
-  if (/ [-–—―]+$/.test(w)) { if (!CLAUSE.test(w)) m += 0.5; }
-  else if (w.includes(' ')) m += 0.6; // a doubled word is two words on one screen
-  if (doc.breaks[i] === 2) m += 1.6;
-  else if (doc.breaks[i] === 1) m += 1.0;
-  else if (CLAUSE.test(w)) m += 0.5;
+  if (w.includes(' ') && !/ [-–—―]+$/.test(w)) m += 0.6; // a doubled word is two words on one screen
+  // Commas and dashes get no pause. A full stop and the end of a paragraph get the same short one (Mark 11-26).
+  if (doc.breaks[i]) m += 0.5;
   // Soft start (see RAMP_MS): a word shown at the start is held twice as long; halfway through, 1.5 times.
   if (rampAt) {
     const t = (performance.now() - rampAt) / RAMP_MS;
