@@ -789,9 +789,8 @@ fileInput.addEventListener('change', () => { openFile(fileInput.files[0]); fileI
 
 // Computer: left click plays or pauses, right click opens the small menu (Open file, Dark),
 // G opens and closes the settings menu, the mouse wheel over a slider moves it.
-// Phone: a tap plays or pauses, a double tap opens the small menu, one finger dragging up from the
-// word opens the magnifier, two fingers swiping up open the settings menu, swipe down anywhere
-// (sliders and buttons too) closes it.
+// Phone: a tap plays or pauses, a double tap opens the small menu, swipe up opens the settings
+// menu, swipe down anywhere (sliders and buttons too) closes it, two fingers dragging up open the magnifier.
 // A tap or click outside the menus always plays or pauses, so the settings menu can stay up while reading.
 // While the small menu is open, a click or tap outside it only closes it.
 function primary() { if (!doc) fileInput.click(); else toggle(); }
@@ -825,8 +824,8 @@ document.addEventListener('pointerup', e => {
   touchStart = null;
   if (swallow) return;
   if (Math.abs(dy) >= 40 && Math.abs(dy) > Math.abs(dx)) {
-    // One finger up is the magnifier now; Settings opens with two fingers or from the double-tap menu.
-    if (dy > 0 && menuOpen()) {
+    if (dy < 0 && !menuOpen() && !s.slider) openMenu();
+    else if (dy > 0 && menuOpen()) {
       if (s.slider && s.slider.value !== s.value) { s.slider.value = s.value; s.slider.dispatchEvent(new Event('input')); }
       if (s.arrow && doc) { idx = s.idx; render(); savePos(); if (playing) restart(); }
       closeMenu();
@@ -847,10 +846,10 @@ document.addEventListener('pointerup', e => {
 document.addEventListener('pointercancel', () => { touchStart = null; });
 
 /* ---------- Magnifier ---------- */
-// One finger (or the mouse) pressed on the word and dragged up zooms out over the text around the
-// current word: the higher the finger goes, the more words show. Moving sideways slides along the text
-// with the finger; holding near a screen edge keeps it moving. Letting go reads on from the word in the
-// middle (playing again if it was playing). Two fingers swiping up open the settings menu instead.
+// Two fingers (or the mouse) pressed on the word and dragged up zoom out over the text around the
+// current word: the higher the fingers go, the more words show. Moving sideways slides along the text
+// with the fingers (their midpoint); holding near a screen edge keeps it moving. Lifting a finger reads
+// on from the word in the middle (playing again if it was playing).
 const lensWrap = document.getElementById('lensWrap'), lens = document.getElementById('lens');
 const LENS_START = 14;   // px up before the magnifier turns on
 const LENS_ZOOM = 70;    // px of further drag that halves the size
@@ -955,60 +954,59 @@ function lensEnd() {
   }, 230);
 }
 
-const fingers = new Map();   // touch id -> where it went down (y)
-let twoFinger = null;        // set while two fingers are down: the biggest up or down movement
+// lensTrack follows the press that can open the magnifier: the midpoint of two fingers, or the mouse.
+const fingers = new Map();   // touch id -> {x, y, onStage}
+function fingerMid() {
+  let x = 0, y = 0;
+  fingers.forEach(f => { x += f.x; y += f.y; });
+  return { x: x / fingers.size, y: y / fingers.size };
+}
 document.addEventListener('pointerdown', e => {
   if (e.pointerType === 'touch') {
-    fingers.set(e.pointerId, e.clientY);
+    fingers.set(e.pointerId, { x: e.clientX, y: e.clientY, onStage: !!e.target.closest('#stage') });
     if (fingers.size === 2) {
-      twoFinger = { dy: 0 };
-      if (lensOn) lensEnd();
-      lensTrack = null;
-    }
-    if (fingers.size > 1) return;
+      swallow = true;   // a two-finger touch never counts as a tap or swipe
+      touchStart = null;
+      if (doc && !lensSettling && [...fingers.values()].every(f => f.onStage)) {
+        const m = fingerMid();
+        lensTrack = { pair: true, x0: m.x, y0: m.y, x: m.x, y: m.y };
+      }
+    } else if (fingers.size > 2 && lensTrack && !lensOn) lensTrack = null;
+    return;
   }
-  if (!doc || lensSettling || swallow || (e.pointerType === 'mouse' && e.button !== 0)) return;
-  if (!e.target.closest('#stage')) return;
+  if (!doc || lensSettling || swallow || e.button !== 0 || !e.target.closest('#stage')) return;
   lensTrack = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
 }, true);
 
 document.addEventListener('pointermove', e => {
   const t = lensTrack;
-  if (!t || e.pointerId !== t.id) return;
-  t.x = e.clientX; t.y = e.clientY;
+  if (!t) return;
+  if (t.pair) {
+    const f = fingers.get(e.pointerId);
+    if (!f || fingers.size !== 2) return;
+    f.x = e.clientX; f.y = e.clientY;
+    const m = fingerMid();
+    t.x = m.x; t.y = m.y;
+  } else {
+    if (e.pointerId !== t.id) return;
+    t.x = e.clientX; t.y = e.clientY;
+  }
   if (lensOn) return;
   const dx = t.x - t.x0, dy = t.y - t.y0;
   if (-dy >= LENS_START && -dy > Math.abs(dx)) lensStart();
   else if (Math.abs(dx) > 30 || dy > 30) lensTrack = null;   // some other gesture
 });
 
-document.addEventListener('pointerup', e => {
-  if (fingers.has(e.pointerId)) {
-    const y0 = fingers.get(e.pointerId);
-    fingers.delete(e.pointerId);
-    if (twoFinger) {
-      swallow = true;
-      const dy = e.clientY - y0;
-      if (Math.abs(dy) > Math.abs(twoFinger.dy)) twoFinger.dy = dy;
-      if (!fingers.size) {
-        if (twoFinger.dy <= -40) openMenu();
-        else if (twoFinger.dy >= 40) closeMenu();
-        twoFinger = null;
-      }
-      return;
-    }
-  }
-  if (lensTrack && e.pointerId === lensTrack.id) {
-    lensTrack = null;
-    if (lensOn) { swallow = true; lensEnd(); }
-  }
-}, true);
-
-document.addEventListener('pointercancel', e => {
-  fingers.delete(e.pointerId);
-  if (!fingers.size) twoFinger = null;
-  if (lensTrack && e.pointerId === lensTrack.id) { lensTrack = null; if (lensOn) lensEnd(); }
-}, true);
+// Lifting either finger (or the mouse button) settles on the middle word.
+function lensRelease(e) {
+  const wasFinger = fingers.delete(e.pointerId);
+  const t = lensTrack;
+  if (!t || (t.pair ? !wasFinger : e.pointerId !== t.id)) return;
+  lensTrack = null;
+  if (lensOn) { swallow = true; lensEnd(); }
+}
+document.addEventListener('pointerup', lensRelease, true);
+document.addEventListener('pointercancel', lensRelease, true);
 
 // Mouse wheel over a slider moves it one step per notch: speed 5 wpm, size 1 px, position one sentence.
 // Wheel up = more / forward. The dial shows black while it moves, like a drag.
