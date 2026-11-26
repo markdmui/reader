@@ -721,7 +721,7 @@ const fileInput = document.getElementById('file');
 fileInput.addEventListener('change', () => { openFile(fileInput.files[0]); fileInput.value = ''; });
 
 // Computer: left click plays or pauses, right click opens the small menu (Open file, Dark),
-// mouse wheel up opens the settings menu, wheel down closes it.
+// M opens and closes the settings menu, the mouse wheel over a slider moves it.
 // Phone: a tap plays or pauses, a double tap opens the small menu, swipe up opens the settings
 // menu, swipe down anywhere (sliders and buttons too) closes it.
 // A tap or click outside the menus always plays or pauses, so the settings menu can stay up while reading.
@@ -778,10 +778,28 @@ document.addEventListener('pointerup', e => {
 });
 document.addEventListener('pointercancel', () => { touchStart = null; });
 
-document.addEventListener('wheel', e => {
-  if (e.deltaY < 0 && !menuOpen()) openMenu();
-  else if (e.deltaY > 0 && menuOpen()) closeMenu();
-}, { passive: true });
+// Mouse wheel over a slider moves it one step per notch: speed 5 wpm, size 1 px, position one sentence.
+// Wheel up = more / forward. The dial shows black while it moves, like a drag.
+let wheelAcc = 0, wheelEl = null;
+document.querySelectorAll('#menu input[type=range]').forEach(r => r.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (r.disabled) return;
+  if (wheelEl !== r) { wheelEl = r; wheelAcc = 0; }
+  wheelAcc += e.deltaMode ? e.deltaY * 34 : e.deltaY;   // line mode (Firefox): ~3 lines per notch
+  while (Math.abs(wheelAcc) >= 100) {
+    const dir = wheelAcc < 0 ? 1 : -1;
+    wheelAcc += dir * 100;
+    if (r === pos) jump(dir);
+    else {
+      const before = r.value;
+      dir > 0 ? r.stepUp() : r.stepDown();
+      if (r.value !== before) r.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+  r.classList.add('moving');
+  clearTimeout(r.wheelIdle);
+  r.wheelIdle = setTimeout(() => r.classList.remove('moving'), 400);
+}, { passive: false }));
 
 // Buttons drop their hover and focus look once pressed, so nothing lingers on them.
 document.addEventListener('pointerdown', e => {
