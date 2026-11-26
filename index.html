@@ -105,8 +105,9 @@
   .nav button { font-size: 34px; line-height: 1; width: 76px; height: 56px; }
   .nav #play { font-size: 17px; width: auto; padding: 0 20px; }
   /* Pressed state: a light grey fill shows the instant you press and fades straight away. */
-  .nav button.flash { animation: flash 280ms ease-out; }
-  @keyframes flash { from { background: var(--line); } to { background: transparent; } }
+  /* Kept very faint and rounded so it registers at the edge of vision without pulling the eye off the word. */
+  .nav button.flash { animation: flash 280ms ease-out; border-radius: 10px; }
+  @keyframes flash { from { background: var(--hover); } to { background: transparent; } }
 
   /* Right-click menu (double tap on a phone): Open file and Dark/Light. */
   #ctx {
