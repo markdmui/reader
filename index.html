@@ -104,6 +104,10 @@
   /* The dial is grey at rest and turns black while it's being moved. */
   input[type=range].moving::-webkit-slider-thumb { background: var(--ink); }
   input[type=range].moving::-moz-range-thumb { background: var(--ink); }
+  /* With a mouse it also turns black on hover, so the edge of vision shows the wheel will move it.
+     Not on a phone, where a tap leaves hover stuck. */
+  :root:not(.touch) input[type=range]:hover::-webkit-slider-thumb { background: var(--ink); }
+  :root:not(.touch) input[type=range]:hover::-moz-range-thumb { background: var(--ink); }
   input[type=range]:focus { outline: none; }
 
   .nav { display: flex; justify-content: space-between; align-items: center; margin: -8px -12px 8px; }
