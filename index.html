@@ -163,7 +163,7 @@
   .nav button.flash { animation: flash 280ms ease-out; border-radius: 10px; }
   @keyframes flash { from { background: var(--press); } to { background: transparent; } }
 
-  /* Right-click menu (double tap on a phone): Settings, Open file, Dark/Light, Reset. */
+  /* Right-click menu (two-finger tap on a phone): Settings, Open file, Dark/Light, Reset. */
   #ctx {
     position: fixed; z-index: 5; min-width: 180px; padding: 6px 0; font-size: 16px;
     background: var(--bg); border: 1px solid var(--line); display: none;
@@ -177,7 +177,9 @@
     padding: 8px 10px; cursor: pointer; min-height: 40px;
   }
   button:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-  .nav button:hover { text-decoration: none; background: var(--hover); }
+  /* Arrows and Play on hover: near-black, not blue (Mark 11-26), on the faint fill. */
+  .nav button:hover { text-decoration: none; background: var(--hover); color: #45454a; }
+  :root.dark:not(.touch) .nav button:not(.pressed):hover { color: #bdb8b0; }
   /* After a press the button goes quiet again: no fill, no colour, until the mouse leaves.
      On a phone the hover look never shows (taps leave it stuck). */
   button.pressed:hover, .touch button:hover { color: var(--quiet); text-decoration: none; background: none; }
@@ -722,7 +724,7 @@ document.querySelectorAll('#menu input[type=range]').forEach(r => {
     try { r.setPointerCapture(e.pointerId); } catch (err) {}
   });
   r.addEventListener('pointermove', e => {
-    if (!drag || e.pointerId !== drag.id || fingers.size > 1) return;   // two fingers = the magnifier
+    if (!drag || e.pointerId !== drag.id || fingers.size > 1 || lensOn) return;   // two fingers = the menu
     const span = +r.max - +r.min, travel = r.getBoundingClientRect().width - 14;   // 14 = knob width
     if (span <= 0 || travel <= 0) return;
     const before = r.value;
@@ -744,7 +746,7 @@ themeBtn.addEventListener('click', () => { closeCtx(); settings.dark = !settings
 // Reset reloads the page; the book, place and settings come back from storage.
 document.getElementById('reset').addEventListener('click', () => location.reload());
 
-// The small right-click menu opens where the click or double tap was, kept inside the screen.
+// The small right-click menu opens where the click or two-finger tap was, kept inside the screen.
 const ctx = document.getElementById('ctx');
 function openCtx(x, y) {
   updateMenu();
@@ -756,11 +758,12 @@ function openCtx(x, y) {
 function closeCtx() { ctx.classList.remove('open'); }
 function ctxOpen() { return ctx.classList.contains('open'); }
 
-// On a phone the arrows and Play flash grey when tapped (restarted on every tap, so quick taps each show).
-// A mouse already gets the hover fill, so it gets no flash.
+// The arrows and Play flash grey when tapped or clicked, and when their keys are pressed (Mark 11-26),
+// restarted every time so quick presses each show.
+function flashBtn(b) { b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); }
 document.querySelectorAll('.nav button').forEach(b => b.addEventListener('pointerdown', e => {
-  if (e.pointerType === 'mouse') return;
-  b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash');
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  flashBtn(b);
 }));
 
 // Arrows: tap for one sentence, hold to keep jumping.
@@ -770,7 +773,7 @@ document.querySelectorAll('.nav button').forEach(b => b.addEventListener('pointe
   const stop = () => { clearTimeout(hold); clearInterval(rep); hold = rep = null; };
   b.addEventListener('pointerdown', e => {
     e.preventDefault();
-    if (fingers.size > 1) return;   // a second finger means the magnifier, not another jump
+    if (fingers.size > 1 || lensOn) return;   // a second finger means the menu, not another jump
     jump(dir);
     hold = setTimeout(() => { rep = setInterval(() => jump(dir), 120); }, 400);
   });
@@ -792,8 +795,8 @@ fileInput.addEventListener('change', () => { openFile(fileInput.files[0]); fileI
 
 // Computer: left click plays or pauses, right click opens the small menu (Open file, Dark),
 // G opens and closes the settings menu, the mouse wheel over a slider moves it.
-// Phone: a tap plays or pauses, a double tap opens the small menu, swipe up opens the settings
-// menu, swipe down anywhere (sliders and buttons too) closes it, two fingers dragging up open the magnifier.
+// Phone: a tap plays or pauses, a two-finger tap opens the small menu, swipe up opens the settings
+// menu, swipe down anywhere (sliders and buttons too) closes it, a double tap opens the magnifier.
 // A tap or click outside the menus always plays or pauses, so the settings menu can stay up while reading.
 // While the small menu is open, a click or tap outside it only closes it.
 function primary() { if (!doc) fileInput.click(); else toggle(); }
@@ -836,14 +839,7 @@ document.addEventListener('pointerup', e => {
     return;
   }
   if (!s.onStage || Math.abs(dx) >= 12 || Math.abs(dy) >= 12) return;
-  const now = performance.now();
-  if (doc && lastTap && now - lastTap.t < 450 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 60) {
-    lastTap = null;
-    toggle();   // undo the first tap's play or pause
-    openCtx(e.clientX, e.clientY);
-    return;
-  }
-  lastTap = { t: now, x: e.clientX, y: e.clientY };
+  lastTap = { t: performance.now(), x: e.clientX, y: e.clientY };   // a second tap soon after opens the magnifier
   primary();
 });
 document.addEventListener('pointercancel', () => { touchStart = null; });
@@ -966,6 +962,7 @@ function lensStart() {
 function lensFrame() {
   if (!lensOn) return;
   const t = lensTrack;
+  if (!t || t.down === false) { lensVy *= 0.8; lensDisp += (lensLineMid[lensLineOf[lensCur]] + lensVy - lensDisp) * 0.35; lensPlace(); lensRaf = requestAnimationFrame(lensFrame); return; }
   let dx = t.x - lensLastX, vy = lensLastY - t.y;
   lensLastX = t.x; lensLastY = t.y;
   // Near an edge it keeps moving that way, faster the closer to the edge.
@@ -1030,11 +1027,16 @@ function lensEnd() {
   }, 180);
 }
 
-// lensTrack follows the press that can open the magnifier: the midpoint of two fingers, or the mouse.
-// Two fingers work anywhere, the menu included: whatever the first finger started on a slider or an
-// arrow is undone when the second one lands, and its tap on Play doesn't count.
+// Phone (Mark 11-26): a double tap opens the magnifier. Keep the second tap down and drag to move,
+// lift to read on from the chosen word. A plain double tap leaves it open: then drag with one finger
+// and lift, or just tap, to read on. Computer: the mouse dragged up on the stage opens it.
+// lensTrack follows the finger or mouse that moves it.
+// A two-finger tap opens the small menu (Settings, Open file, Dark/Light, Reset). Two fingers work
+// anywhere, the settings menu included: whatever the first finger started on a slider or an arrow is
+// undone when the second one lands, and its tap on Play doesn't count.
 const fingers = new Map();   // touch id -> {x, y}
 let twoFingerClick = false;  // blocks the click a lifted finger would send to a button
+let pairTap = null;          // the two-finger tap in progress: where it started and where it is
 document.addEventListener('click', e => {
   if (twoFingerClick) { e.stopPropagation(); e.preventDefault(); }
 }, true);
@@ -1061,11 +1063,30 @@ document.addEventListener('pointerdown', e => {
       twoFingerClick = true;
       undoFirstFinger();
       touchStart = null;
-      if (doc && !lensSettling) {
-        const m = fingerMid();
-        lensTrack = { pair: true, x0: m.x, y0: m.y, x: m.x, y: m.y };
-      }
-    } else if (fingers.size > 2 && lensTrack && !lensOn) lensTrack = null;
+      const m = fingerMid();
+      pairTap = lensOn ? null : { x0: m.x, y0: m.y, x: m.x, y: m.y };
+      return;
+    }
+    if (fingers.size > 2) { pairTap = null; return; }
+    if (lensSettling) return;
+    const track = { id: e.pointerId, tap: true, down: true, first: false, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
+    if (lensOn) {
+      // The magnifier is waiting after a plain double tap: this finger moves it.
+      swallow = true; twoFingerClick = true;
+      lensTrack = track; lensLastX = e.clientX; lensLastY = e.clientY;
+      return;
+    }
+    const now = performance.now();
+    if (doc && e.target.closest('#stage') && lastTap && now - lastTap.t < 450 &&
+        Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 60) {
+      lastTap = null;
+      swallow = true; twoFingerClick = true;
+      toggle();   // undo the first tap's play or pause
+      track.first = true;
+      lensTrack = track;
+      lensStart();
+      lensGrace = 0;   // no opening move to ignore
+    }
     return;
   }
   if (!doc || lensSettling || swallow || e.button !== 0 || !e.target.closest('#stage')) return;
@@ -1073,29 +1094,34 @@ document.addEventListener('pointerdown', e => {
 }, true);
 
 document.addEventListener('pointermove', e => {
+  const f = fingers.get(e.pointerId);
+  if (f) { f.x = e.clientX; f.y = e.clientY; }
+  if (pairTap && f && fingers.size === 2) { const m = fingerMid(); pairTap.x = m.x; pairTap.y = m.y; }
   const t = lensTrack;
-  if (!t) return;
-  if (t.pair) {
-    const f = fingers.get(e.pointerId);
-    if (!f || fingers.size !== 2) return;
-    f.x = e.clientX; f.y = e.clientY;
-    const m = fingerMid();
-    t.x = m.x; t.y = m.y;
-  } else {
-    if (e.pointerId !== t.id) return;
-    t.x = e.clientX; t.y = e.clientY;
-  }
+  if (!t || e.pointerId !== t.id) return;
+  t.x = e.clientX; t.y = e.clientY;
   if (lensOn) return;
   const dx = t.x - t.x0, dy = t.y - t.y0;
   if (-dy >= LENS_START && -dy > Math.abs(dx)) lensStart();
   else if (Math.abs(dx) > 30 || dy > 30) lensTrack = null;   // some other gesture
 });
 
-// Lifting either finger (or the mouse button) settles on the middle word.
+// Lifting the finger (or the mouse button) settles on the chosen word, except after a plain double tap,
+// which leaves the magnifier open. Lifting a two-finger tap that stayed put opens the small menu.
 function lensRelease(e) {
   const wasFinger = fingers.delete(e.pointerId);
+  if (pairTap && wasFinger) {
+    const p = pairTap;
+    pairTap = null;
+    if (e.type === 'pointerup' && Math.hypot(p.x - p.x0, p.y - p.y0) < 20) openCtx(p.x0, p.y0);
+    return;
+  }
   const t = lensTrack;
-  if (!t || (t.pair ? !wasFinger : e.pointerId !== t.id)) return;
+  if (!t || e.pointerId !== t.id) return;
+  if (t.tap) {
+    swallow = true;
+    if (t.first && lensOn && Math.hypot(t.x - t.x0, t.y - t.y0) < 12) { t.down = false; t.first = false; return; }
+  }
   lensTrack = null;
   if (lensOn) { swallow = true; lensEnd(); }
 }
@@ -1152,9 +1178,9 @@ document.addEventListener('keydown', e => {
   if ((k === ' ' || k === 'Enter') && e.target.closest && e.target.closest('button')) return;
   if (k.startsWith('Arrow') && e.target.matches && e.target.matches('input[type=range]')) return;
   // Space, Enter and D play or pause; S and F jump back and forward a sentence, like the arrow keys.
-  if (k === ' ' || k === 'Enter' || k === 'd' || k === 'D') { e.preventDefault(); if (doc) toggle(); }
-  else if (k === 'ArrowLeft' || k === 's' || k === 'S') { e.preventDefault(); jump(-1); }
-  else if (k === 'ArrowRight' || k === 'f' || k === 'F') { e.preventDefault(); jump(1); }
+  if (k === ' ' || k === 'Enter' || k === 'd' || k === 'D') { e.preventDefault(); if (doc) toggle(); flashBtn(document.getElementById('play')); }
+  else if (k === 'ArrowLeft' || k === 's' || k === 'S') { e.preventDefault(); jump(-1); flashBtn(document.getElementById('back')); }
+  else if (k === 'ArrowRight' || k === 'f' || k === 'F') { e.preventDefault(); jump(1); flashBtn(document.getElementById('fwd')); }
   else if (k === 'ArrowUp') { e.preventDefault(); settings.wpm = Math.min(MAX_WPM, settings.wpm + 5); saveSettings(); updateMenu(); showValueTip(wpm, settings.wpm); }
   else if (k === 'ArrowDown') { e.preventDefault(); settings.wpm = Math.max(MIN_WPM, settings.wpm - 5); saveSettings(); updateMenu(); showValueTip(wpm, settings.wpm); }
   else if (k === 'Escape') { if (ctxOpen()) closeCtx(); else if (menuOpen()) closeMenu(); }
