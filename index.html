@@ -58,35 +58,34 @@
   #word .r { text-align: left; overflow: visible; }
   #box { position: relative; width: 100%; }
 
-  /* Magnifier (Mark 11-26): drag up from the word and the line of text around it zooms out, the more the
-     higher the finger goes; sideways moves along it; letting go reads on from the word in the middle.
-     The current word keeps its ink and red letter, the rest are grey and fade out at the screen edges. */
+  /* Magnifier (Mark 11-26): two fingers dragged up open a small page around the current word: its line in
+     the middle, two lines above and two below, the outer ones fading. Sideways walks word by word along the
+     lines; the page glides up or down a line as the chosen word wraps. Letting go reads on from that word.
+     The chosen word keeps its ink and red letter with a thin underline; the rest are nearly black. */
   #lensWrap {
-    position: absolute; inset: 0; display: none; pointer-events: none;
-    -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
-    mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+    position: absolute; left: 0; right: 0; top: 50%; height: 8.6em; transform: translateY(-50%);
+    display: none; pointer-events: none; opacity: 0; transition: opacity 170ms ease-out;
+    -webkit-mask-image: linear-gradient(180deg, transparent, #000 1.1em, #000 calc(100% - 1.1em), transparent);
+    mask-image: linear-gradient(180deg, transparent, #000 1.1em, #000 calc(100% - 1.1em), transparent);
   }
   #lensWrap.on { display: block; }
+  #lensWrap.in { opacity: 1; }
   #lens {
-    position: absolute; left: 0; top: 50%; white-space: nowrap; line-height: 1.2;
-    transform-origin: 0 50%; will-change: transform;
+    position: absolute; top: 50%; line-height: 1.5; white-space: normal;
+    will-change: transform; transition: transform 200ms cubic-bezier(.2, .7, .3, 1);
   }
-  #lens.settle { transition: transform 220ms cubic-bezier(.2, .7, .3, 1); }
-  /* Neighbours nearly black (Mark 11-26), the chosen word in ink with its red letter and a thin underline.
-     --s is the zoom, so the underline stays about 1.5 px on screen at any size. */
-  #lens .w { color: #45454a; }
+  #lens.jump { transition: none; }
+  #lens .w { white-space: nowrap; color: #45454a; }
   :root.dark #lens .w { color: #bdb8b0; }
   #lens .w.on {
+    color: var(--ink);
     text-decoration: underline; text-decoration-color: var(--quiet);
-    text-decoration-thickness: calc(1.5px / var(--s, 1)); text-underline-offset: 0.16em;
+    text-decoration-thickness: 1.5px; text-underline-offset: 0.16em;
   }
-  #lens .w:not(.on) { opacity: 0; transition: opacity 180ms ease-out; }
-  #lensWrap.in #lens .w:not(.on) { opacity: 1; }
-  #lens .w.on { color: var(--ink); }
   #lens .w.on b { color: var(--pivot); }
   #lens b { font-weight: inherit; }
-  #lens .para { margin-right: 1.2em; }
-  .lensing #word { visibility: hidden; }
+  #word, #ticks { transition: opacity 170ms ease-out; }
+  .lensing #word, .lensing #ticks { opacity: 0; }
   /* Two faint ticks mark where the red letter lands, so the eye can park there. */
   #ticks { position: absolute; left: 50%; top: 50%; pointer-events: none; }
   #ticks::before, #ticks::after {
@@ -854,37 +853,58 @@ document.addEventListener('pointerup', e => {
 document.addEventListener('pointercancel', () => { touchStart = null; });
 
 /* ---------- Magnifier ---------- */
-// Two fingers (or the mouse) pressed on the word and dragged up zoom out over the text around the
-// current word: the higher the fingers go, the more words show. Moving sideways slides along the text
-// with the fingers (their midpoint); holding near a screen edge keeps it moving. Lifting a finger reads
-// on from the word in the middle (playing again if it was playing).
+// Two fingers (or the mouse) dragged up open a small page around the current word: five lines, its line
+// in the middle. Moving sideways walks along the text with the fingers (their midpoint), line after line,
+// as if the lines were one strip; holding near a screen edge keeps it moving. Lifting a finger reads on
+// from the chosen word (playing again if it was playing).
 const lensWrap = document.getElementById('lensWrap'), lens = document.getElementById('lens');
 const LENS_START = 14;   // px up before the magnifier turns on
-const LENS_ZOOM = 70;    // px of further drag that halves the size
-const LENS_MIN = 0.12;   // the smallest it gets
-const LENS_SPAN = 150;   // words built each side; rebuilt around the middle when you get near an end
+const LENS_SPAN = 150;   // words built each side; rebuilt when you get near an end
+const LENS_FONT = 0.5;   // page text size, as a share of the word size
 let lensTrack = null, lensOn = false, lensSettling = false, lensWasPlaying = false, lensRaf = 0;
-let lensFrom = 0, lensWords = [], lensAnchors = [], lensC = 0, lensS = 1, lensLastX = 0, lensCur = -1;
+let lensFrom = 0, lensWords = [], lensAnchors = [], lensLineOf = [], lensLineFirst = [], lensLineMid = [];
+let lensC = 0, lensLastX = 0, lensCur = -1, lensLine = -1;
 
-// Lays out the words around `center` in one line. Each word's anchor is the middle of its red letter,
-// the same point the single word is lined up on, so going in and out of the magnifier doesn't jump.
-function lensBuild(center) {
-  lensFrom = Math.max(0, center - LENS_SPAN);
+// The first word of the paragraph holding word i, looking back at most `max` words (else i itself).
+function paraStart(i, max) {
+  for (let k = i; k > 0 && i - k < max; k--) if (doc.breaks[k - 1] === 2) return k;
+  return i <= max ? 0 : i;
+}
+
+// Lays out words from `from` as wrapped lines, each paragraph on a new line. Builds always start at a
+// paragraph start or at a word that began a line before, so the lines come out the same each time.
+// Each word's anchor is the middle of its red letter, counted along the lines as if they were one strip.
+function lensBuild(from, center) {
+  lensFrom = from;
   const to = Math.min(doc.words.length - 1, center + LENS_SPAN);
   const frag = document.createDocumentFragment();
-  for (let i = lensFrom; i <= to; i++) {
+  for (let i = from; i <= to; i++) {
     const [a, p, r] = splitWord(doc.words[i]);
     const w = document.createElement('span');
-    w.className = doc.breaks[i] === 2 ? 'w para' : 'w';
+    w.className = 'w';
     const b = document.createElement('b');
     b.textContent = p;
     w.append(a, b, r);
-    frag.append(w, ' ');
+    frag.append(w, doc.breaks[i] === 2 ? document.createElement('br') : ' ');
   }
   lens.replaceChildren(frag);
-  lensWords = Array.from(lens.children);
-  lensAnchors = lensWords.map(w => { const b = w.firstElementChild; return b.offsetLeft + b.offsetWidth / 2; });
-  lensCur = -1;
+  lensWords = Array.from(lens.querySelectorAll('.w'));
+  lensAnchors = []; lensLineOf = []; lensLineFirst = []; lensLineMid = [];
+  const gap = parseFloat(getComputedStyle(lens).fontSize) * 0.6;
+  let top = null, base = 0, left = 0, right = 0;
+  lensWords.forEach((w, k) => {
+    const b = w.firstElementChild;
+    if (w.offsetTop !== top) {
+      if (top !== null) base += right - left + gap;
+      top = w.offsetTop; left = w.offsetLeft;
+      lensLineFirst.push(k);
+      lensLineMid.push(top + w.offsetHeight / 2);
+    }
+    right = w.offsetLeft + w.offsetWidth;
+    lensLineOf.push(lensLineFirst.length - 1);
+    lensAnchors.push(base + b.offsetLeft - left + b.offsetWidth / 2);
+  });
+  lensCur = -1; lensLine = -1;
 }
 
 function lensNearest() {
@@ -893,15 +913,20 @@ function lensNearest() {
   return lo > 0 && lensC - lensAnchors[lo - 1] < lensAnchors[lo] - lensC ? lo - 1 : lo;
 }
 
-function lensApply() {
-  const W = lensWrap.clientWidth;
-  lens.style.transform = `translate(${W / 2 - lensC * lensS}px, -50%) scale(${lensS})`;
-  lens.style.setProperty('--s', lensS);
+// Marks the chosen word and keeps its line in the middle (gliding, unless `jump`).
+function lensApply(jump) {
   const n = lensNearest();
   if (n !== lensCur) {
     if (lensWords[lensCur]) lensWords[lensCur].classList.remove('on');
     lensWords[n].classList.add('on');
     lensCur = n;
+  }
+  const L = lensLineOf[n];
+  if (L !== lensLine || jump) {
+    if (jump) lens.classList.add('jump');
+    lens.style.transform = `translateY(${-lensLineMid[L]}px)`;
+    if (jump) { lens.offsetWidth; lens.classList.remove('jump'); }
+    lensLine = L;
   }
 }
 
@@ -910,57 +935,59 @@ function lensStart() {
   lensWasPlaying = playing;
   if (playing) pause();
   closeCtx();
-  lens.style.fontSize = wordEl.style.fontSize;   // the same size as the word on screen
-  lens.classList.remove('settle');
+  const f = Math.round(baseSize() * LENS_FONT);
+  lensWrap.style.fontSize = f + 'px';
+  const W = window.innerWidth, pw = Math.min(W - 40, f * 30);
+  lens.style.width = pw + 'px';
+  lens.style.left = (W - pw) / 2 + 'px';
   lensWrap.classList.add('on');   // shown before building, so the words can be measured
+  lensBuild(paraStart(Math.max(0, idx - LENS_SPAN), 600), idx);
+  lensC = lensAnchors[idx - lensFrom]; lensLastX = lensTrack.x;
+  lensApply(true);
   document.documentElement.classList.add('lensing');
-  lensBuild(idx);
-  lensS = 1; lensC = lensAnchors[idx - lensFrom]; lensLastX = lensTrack.x;
-  lensApply();
-  requestAnimationFrame(() => lensWrap.classList.add('in'));   // the neighbours fade in
+  requestAnimationFrame(() => lensWrap.classList.add('in'));   // the page fades in as the word fades out
   lensRaf = requestAnimationFrame(lensFrame);
 }
 
 function lensFrame() {
   if (!lensOn) return;
   const t = lensTrack;
-  lensS = Math.max(LENS_MIN, 1 / (1 + Math.max(0, t.y0 - t.y - LENS_START) / LENS_ZOOM));
-  lensC += (t.x - lensLastX) / lensS;
+  lensC += t.x - lensLastX;
   lensLastX = t.x;
-  // Near an edge it keeps sliding that way, faster the closer to the edge.
+  // Near an edge it keeps moving that way, faster the closer to the edge.
   const W = window.innerWidth, edge = W * 0.12;
-  if (t.x < edge) lensC -= (1 - t.x / edge) * 12 / lensS;
-  else if (t.x > W - edge) lensC += (1 - (W - t.x) / edge) * 12 / lensS;
+  if (t.x < edge) lensC -= (1 - t.x / edge) * 10;
+  else if (t.x > W - edge) lensC += (1 - (W - t.x) / edge) * 10;
   lensC = Math.min(lensAnchors[lensAnchors.length - 1], Math.max(lensAnchors[0], lensC));
-  // Close to either end of the built words: rebuild around the middle word, keeping the spot.
+  // Close to either end of the built words: rebuild, keeping the spot and the same lines.
   const n = lensNearest();
-  if ((n < 40 && lensFrom > 0) || (n > lensWords.length - 40 && lensFrom + lensWords.length < doc.words.length)) {
+  const nearStart = n < 40 && lensFrom > 0;
+  const nearEnd = n > lensWords.length - 40 && lensFrom + lensWords.length < doc.words.length;
+  if (nearStart || nearEnd) {
     const g = lensFrom + n, off = lensC - lensAnchors[n];
-    lensBuild(g);
+    const from = nearEnd
+      ? lensFrom + lensLineFirst[lensLineOf[Math.max(0, n - LENS_SPAN)]]   // a word that starts a line
+      : paraStart(Math.max(0, g - LENS_SPAN), 600);
+    lensBuild(from, g);
     lensC = lensAnchors[g - lensFrom] + off;
-  }
-  lensApply();
+    lensApply(true);
+  } else lensApply(false);
   lensRaf = requestAnimationFrame(lensFrame);
 }
 
-// Settles back to full size on the chosen word, then hands over to the normal one-word view.
+// Fades back to the one-word view on the chosen word.
 function lensEnd() {
   cancelAnimationFrame(lensRaf);
   lensOn = false; lensSettling = true;
-  const n = lensNearest();
-  idx = lensFrom + n;
-  lens.classList.add('settle');
+  idx = lensFrom + lensNearest();
+  showMsg(''); render(); savePos();
   lensWrap.classList.remove('in');
-  lensS = 1; lensC = lensAnchors[n];
-  lensApply();
+  document.documentElement.classList.remove('lensing');
   setTimeout(() => {
     lensWrap.classList.remove('on');
-    lens.classList.remove('settle');
-    document.documentElement.classList.remove('lensing');
     lensSettling = false;
-    showMsg(''); render(); savePos();
     if (lensWasPlaying) play();   // play() brings the soft start
-  }, 230);
+  }, 180);
 }
 
 // lensTrack follows the press that can open the magnifier: the midpoint of two fingers, or the mouse.
